@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f7f8fc">
+  <meta name="description" content="A private personal AI assistant interface with chat, memory, and voice tools.">
+  <title>Personal AI Assistant</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Noto+Sans+Malayalam:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./styles.css">
+  <script src="./app.js" defer></script>
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar" id="sidebar" aria-label="Main navigation">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">✳</span>
+        <span><strong>Personal AI</strong><small>Your private assistant</small></span>
+        <button class="icon-button close-menu" type="button" aria-label="Close navigation">×</button>
+      </div>
+
+      <button class="new-chat" id="newChat" type="button"><span aria-hidden="true">＋</span> New chat <kbd>⌘ K</kbd></button>
+
+      <div class="section-label">WORKSPACE</div>
+      <nav aria-label="Workspace">
+        <button class="nav-link active" type="button" data-page="chat"><span class="nav-icon" aria-hidden="true">◉</span>Chat</button>
+        <button class="nav-link" type="button" data-page="memory"><span class="nav-icon" aria-hidden="true">◇</span>Memory <span class="nav-count" id="memoryCount"></span></button>
+        <button class="nav-link" type="button" data-page="voice"><span class="nav-icon" aria-hidden="true">◖</span>Voice Studio</button>
+        <button class="nav-link" type="button" data-page="tasks"><span class="nav-icon" aria-hidden="true">⌘</span>Computer Tasks</button>
+      </nav>
+
+      <div class="recent-heading"><span>RECENT CHATS</span><button class="icon-button tiny" id="recentSearch" type="button" aria-label="Search recent chats">⌕</button></div>
+      <input class="search-recent hidden" id="recentSearchInput" type="search" placeholder="Search chats…" aria-label="Search recent chats">
+      <div class="recent-list" id="recentChats" aria-live="polite"></div>
+
+      <div class="sidebar-bottom">
+        <div class="section-label">PREFERENCES</div>
+        <nav aria-label="Preferences">
+          <button class="nav-link" type="button" data-page="settings"><span class="nav-icon" aria-hidden="true">⚙</span>Settings</button>
+          <button class="nav-link" type="button" data-page="help"><span class="nav-icon" aria-hidden="true">?</span>Help &amp; Status</button>
+        </nav>
+        <div class="profile">
+          <div class="avatar" aria-hidden="true">P</div>
+          <div><strong>Personal workspace</strong><small>Local backend</small></div>
+          <span class="dot" aria-label="Local backend"></span>
+        </div>
+        <div class="footnote"><span class="dot"></span> Your chats are saved to the local backend</div>
+      </div>
+    </aside>
+
+    <button class="scrim" id="scrim" type="button" aria-label="Close navigation"></button>
+
+    <main class="main-area">
+      <header class="topbar">
+        <div class="top-left">
+          <button class="icon-button menu-toggle" id="menuToggle" type="button" aria-label="Open navigation">☰</button>
+          <div class="breadcrumb"><strong id="pageTitle">Chat</strong><span>/</span><span class="chat-title" id="chatTitle">New conversation</span></div>
+        </div>
+        <div class="top-actions">
+          <div class="mode-wrap">
+            <span class="mode-status"><i class="dot"></i><span id="modeAvailability">Not configured</span></span>
+            <select id="modeSelect" aria-label="Assistant mode">
+              <option value="auto">Auto</option>
+              <option value="online">Online</option>
+              <option value="offline">Offline</option>
+            </select>
+          </div>
+          <button class="icon-button" id="voiceShortcut" type="button" aria-label="Open voice studio">◖</button>
+          <button class="icon-button details-toggle" id="detailsToggle" type="button" aria-label="Toggle chat details">ⓘ</button>
+        </div>
+      </header>
+
+      <section class="page-view chat-page" id="page-chat" aria-label="Chat">
+        <div class="chat-content">
+          <section class="welcome" id="welcomeBlock">
+            <div class="welcome-mark" aria-hidden="true">✳</div>
+            <div class="eyebrow">YOUR PERSONAL ASSISTANT</div>
+            <h1>How can I help you today?</h1>
+            <p>A thoughtful space for ideas, questions, and everyday tasks.</p>
+            <div class="suggestions">
+              <button class="suggestion" type="button" data-prompt="Help me plan my week">
+                <i class="suggestion-icon violet" aria-hidden="true">✦</i><span><b>Plan my week</b><small>Make a simple weekly plan</small></span><span class="arrow">›</span>
+              </button>
+              <button class="suggestion" type="button" data-prompt="Explain a difficult topic simply">
+                <i class="suggestion-icon peach" aria-hidden="true">⌘</i><span><b>Learn something</b><small>Break down a tricky topic</small></span><span class="arrow">›</span>
+              </button>
+              <button class="suggestion" type="button" data-prompt="Help me write a clear message">
+                <i class="suggestion-icon mint" aria-hidden="true">✎</i><span><b>Write with me</b><small>Start a draft or polish text</small></span><span class="arrow">›</span>
+              </button>
+            </div>
+          </section>
+          <div class="messages" id="messages" aria-live="polite" aria-relevant="additions"></div>
+          <div class="chat-notice" id="chatNotice"><span class="dot"></span> Gemini assistant · Conversations are saved to your backend</div>
+        </div>
+        <div class="composer-wrap">
+          <form class="composer" id="composer">
+            <textarea id="messageInput" rows="1" maxlength="20000" placeholder="Message your assistant…" aria-label="Message your assistant"></textarea>
+            <div class="composer-row">
+              <div class="composer-tools">
+                <button class="tool-button" id="attachButton" type="button" aria-label="Attach a file">＋ Attach</button>
+              </div>
+              <div class="submit-row">
+                <span>Enter to send · Shift + Enter for a new line</span>
+                <button class="send-button" type="submit" aria-label="Send message">↑</button>
+              </div>
+            </div>
+          </form>
+          <div class="composer-caption">AI can make mistakes. Check important information.</div>
+        </div>
+      </section>
+
+      <section class="page-view hidden" id="page-memory" aria-label="Memory"></section>
+      <section class="page-view hidden" id="page-voice" aria-label="Voice Studio"></section>
+      <section class="page-view hidden" id="page-tasks" aria-label="Computer Tasks"></section>
+      <section class="page-view hidden" id="page-settings" aria-label="Settings"></section>
+      <section class="page-view hidden" id="page-help" aria-label="Help and Status"></section>
+    </main>
+
+    <aside class="details-panel" id="detailsPanel" aria-label="Chat details">
+      <div class="panel-heading">
+        <div><div class="eyebrow">CONVERSATION</div><h2>Details</h2></div>
+        <button class="icon-button" id="closeDetails" type="button" aria-label="Close details">×</button>
+      </div>
+      <div class="detail-card"><i class="detail-icon" aria-hidden="true">✳</i><div><b>Assistant mode</b><small><i class="dot"></i><span id="detailsMode">Auto mode</span></small></div></div>
+      <div class="detail-section"><h3>AI service</h3><b id="detailsService">Checking status…</b><small>Gemini API credentials are kept on the backend.</small></div>
+      <div class="detail-section"><h3>Saved memories</h3><b id="detailsMemory">Stored in this browser</b><small>Manage what your assistant remembers.</small><button class="text-link" type="button" data-page="memory">View memory →</button></div>
+      <div class="detail-tip">Conversations and memories are saved to the local SQLite backend.</div>
+      <button class="icon-button" id="chatMore" type="button" aria-label="Conversation options">•••</button>
+    </aside>
+  </div>
+
+  <dialog id="confirmDialog" class="dialog">
+    <form id="confirmForm" method="dialog">
+      <h2 id="dialogTitle">Confirm action</h2>
+      <p id="dialogMessage"></p>
+      <div class="form-actions">
+        <button class="button secondary" type="submit" value="cancel">Cancel</button>
+        <button class="button primary" id="dialogConfirm" type="submit" value="confirm">Confirm</button>
+      </div>
+    </form>
+  </dialog>
+  <div id="memoryEditor"></div>
+  <div class="toast-region" id="toastRegion" role="status" aria-live="polite"></div>
+</body>
+</html>
