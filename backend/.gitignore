@@ -1,0 +1,5 @@
+assistant.sqlite3
+assistant.sqlite3-shm
+assistant.sqlite3-wal
+__pycache__/
+*.py[cod]
