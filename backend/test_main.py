@@ -244,7 +244,7 @@ class BackendAPITest(unittest.TestCase):
         self.assertEqual(status, 503)
         self.assertIn("GEMINI_API_KEY", body["error"])
 
-    def test_gemini_request_uses_api_key_header_and_parses_text(self):
+    def test_gemini_request_uses_api_key_header_and_two_way_malayalam_prompt(self):
         response = io.BytesIO(
             b'{"candidates":[{"content":{"parts":[{"text":"Hello back."}]}}]}'
         )
@@ -256,7 +256,12 @@ class BackendAPITest(unittest.TestCase):
 
         request = mocked_urlopen.call_args.args[0]
         headers = {name.lower(): value for name, value in request.headers.items()}
+        request_body = json.loads(request.data)
         self.assertEqual(headers["x-goog-api-key"], "test-key")
+        self.assertIn(
+            "സംഭാഷണം തുടരുക",
+            request_body["systemInstruction"]["parts"][0]["text"],
+        )
         self.assertEqual(reply, "Hello back.")
 
 

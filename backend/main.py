@@ -193,9 +193,9 @@ def generate_reply(
     ]
     request_body: dict[str, Any] = {"contents": contents}
     instructions = {
-        "both": "Respond in English or Malayalam, naturally matching the user's language. Ask any follow-up questions in the same language.",
-        "en": "Respond in English and ask any follow-up questions in English.",
-        "ml": "Respond in Malayalam and ask any follow-up questions in Malayalam. Use natural, clear Malayalam.",
+        "both": "Have a warm, natural two-way conversation in English or Malayalam, matching the user's language. Engage personally with what the user says instead of sounding like a one-way answer machine. When appropriate, ask a brief, relevant follow-up question to keep the conversation going, in the same language.",
+        "en": "Have a warm, natural two-way conversation in English. Engage with what the user says instead of sounding like a one-way answer machine. When appropriate, ask a brief, relevant follow-up question to keep the conversation going.",
+        "ml": "മലയാളത്തിൽ സ്വാഭാവികമായും സൗഹൃദപരമായും ഉപയോക്താവിനോട് നേരിട്ട് സംസാരിക്കുക. അവർ പറയുന്നത് ശ്രദ്ധിച്ച് അതിനോട് താൽപര്യത്തോടെ പ്രതികരിച്ച് സംഭാഷണം തുടരുക; വെറും വിവരങ്ങൾ മാത്രം നൽകി നിർത്തരുത്. സംഭാഷണത്തിന് യോജിക്കുമ്പോൾ, കൂടുതൽ സംസാരിക്കാൻ പ്രേരിപ്പിക്കുന്ന പ്രസക്തമായ ഒരു ചെറിയ തുടർചോദ്യം മലയാളത്തിൽ ചോദിക്കുക.",
     }
     system_parts = [instructions[language]]
     if memories:

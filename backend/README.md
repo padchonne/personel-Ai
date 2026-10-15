@@ -4,8 +4,9 @@ This Python API serves the web app, stores chats and memories in SQLite for
 local development or PostgreSQL for Cloud Run, and uses Google Gemini for chat
 replies. It binds to
 `127.0.0.1:8000` by default. Open `http://127.0.0.1:8000` after starting it.
-Assistant responses and follow-up questions default to Malayalam; the
-preference can be changed in the app's Settings.
+The assistant defaults to a friendly, two-way Malayalam conversation and asks
+relevant follow-up questions when they fit. Change the response language in
+the app's Settings.
 
 From the project root, set the key in the environment and start the server:
 
