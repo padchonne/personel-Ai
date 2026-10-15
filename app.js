@@ -1,8 +1,9 @@
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 const STORAGE_KEY = "personal-ai-preview-v1";
-const API_BASE_URL = document.querySelector('meta[name="api-base-url"]')?.content || "";
+const API_BASE_URL = (document.querySelector('meta[name="api-base-url"]')?.content || "").replace(/\/+$/, "");
 const STATIC_ONLY = location.hostname.endsWith(".github.io") && !API_BASE_URL;
+const ACCESS_TOKEN_KEY = "personal-ai-access-token";
 const initialState = { chats: [], memories: [], settings: { language: "both", mode: "auto", speakReplies: false, memoryEnabled: true }, activeChatId: null };
 let state = loadState();
 let activePage = "chat";
@@ -10,6 +11,7 @@ let listening = false;
 let recognition = null;
 let taskTab = "pending";
 let confirmAction = null;
+let accessTokenPrompt = null;
 let backendStatus = { available: false, geminiConfigured: false };
 
 function loadState() {
@@ -29,17 +31,63 @@ function saveState() {
 async function apiRequest(path, options = {}) {
   if (STATIC_ONLY) throw new Error("This GitHub Pages site has no backend connected. AI chat and saved data are unavailable.");
   let response;
+  const request = (token = "") => fetch(`${API_BASE_URL}${path}`, {
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(options.headers || {}),
+    },
+  });
   try {
-    response = await fetch(`${API_BASE_URL}${path}`, {
-      ...options,
-      headers: { "Content-Type": "application/json", ...(options.headers || {}) },
-    });
+    response = await request(sessionStorage.getItem(ACCESS_TOKEN_KEY) || "");
+    if (response.status === 401 && API_BASE_URL) {
+      const token = await requestAccessToken();
+      response = await request(token);
+      if (response.status === 401) sessionStorage.removeItem(ACCESS_TOKEN_KEY);
+    }
   } catch (error) {
+    if (error instanceof Error && error.message === "Access code entry was cancelled.") throw error;
     throw new Error("Could not reach the backend. Start it with `python3 -m backend.main` and reload.");
   }
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(payload.error || `Backend request failed (${response.status}).`);
   return payload;
+}
+function requestAccessToken() {
+  if (!accessTokenPrompt) {
+    accessTokenPrompt = new Promise((resolve, reject) => {
+      const dialog = $("#accessDialog");
+      const form = $("#accessForm");
+      const input = $("#accessTokenInput");
+      const finish = (token) => {
+        dialog.removeEventListener("close", onClose);
+        form.removeEventListener("submit", onSubmit);
+        accessTokenPrompt = null;
+        if (token) {
+          const value = token.trim();
+          sessionStorage.setItem(ACCESS_TOKEN_KEY, value);
+          resolve(value);
+        } else {
+          reject(new Error("Access code entry was cancelled."));
+        }
+      };
+      const onClose = () => finish("");
+      const onSubmit = (event) => {
+        event.preventDefault();
+        const token = input.value.trim();
+        if (!token) { input.focus(); return; }
+        input.value = "";
+        dialog.close();
+        finish(token);
+      };
+      dialog.addEventListener("close", onClose, { once: true });
+      form.addEventListener("submit", onSubmit);
+      dialog.showModal();
+      input.focus();
+    });
+  }
+  return accessTokenPrompt;
 }
 function escapeHtml(value) {
   return String(value).replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);

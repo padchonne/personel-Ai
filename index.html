@@ -142,6 +142,16 @@
       </div>
     </form>
   </dialog>
+  <dialog id="accessDialog" class="dialog">
+    <form id="accessForm">
+      <h2>Connect to your assistant</h2>
+      <p>Enter the private access code provided when your backend was deployed. It stays in this browser tab only.</p>
+      <input id="accessTokenInput" type="password" autocomplete="current-password" required aria-label="Private backend access code" placeholder="Private access code">
+      <div class="form-actions">
+        <button class="button primary" type="submit">Connect</button>
+      </div>
+    </form>
+  </dialog>
   <div id="memoryEditor"></div>
   <div class="toast-region" id="toastRegion" role="status" aria-live="polite"></div>
 </body>
