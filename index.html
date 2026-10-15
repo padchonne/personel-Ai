@@ -65,7 +65,7 @@
             <select id="modeSelect" aria-label="Assistant mode">
               <option value="auto">Auto</option>
               <option value="online">Online</option>
-              <option value="offline">Offline</option>
+              <option value="offline" disabled>Offline (not available)</option>
             </select>
           </div>
           <button class="icon-button" id="voiceShortcut" type="button" aria-label="Open voice studio">◖</button>
@@ -100,7 +100,7 @@
             <textarea id="messageInput" rows="1" maxlength="20000" placeholder="Message your assistant…" aria-label="Message your assistant"></textarea>
             <div class="composer-row">
               <div class="composer-tools">
-                <button class="tool-button" id="attachButton" type="button" aria-label="Attach a file">＋ Attach</button>
+                <button class="tool-button" id="attachButton" type="button" aria-label="Attachments are not available" title="File attachments are not available yet" disabled>＋ Attachments unavailable</button>
               </div>
               <div class="submit-row">
                 <span>Enter to send · Shift + Enter for a new line</span>

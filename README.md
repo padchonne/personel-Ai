@@ -44,6 +44,6 @@ Never put API keys or access codes in the site or browser code.
 
 ## Privacy and deployment
 
-Local chats and memories are saved to a SQLite database, which is excluded
+Local chats, memories, and assistant preferences are saved to a SQLite database, which is excluded
 from Git. Cloud Run deployments use PostgreSQL and require the configured
 private access code for API requests. Cloud Run and Cloud SQL may incur charges.

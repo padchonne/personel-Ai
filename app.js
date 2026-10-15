@@ -12,7 +12,7 @@ let recognition = null;
 let taskTab = "pending";
 let confirmAction = null;
 let accessTokenPrompt = null;
-let backendStatus = { available: false, geminiConfigured: false };
+let backendStatus = { available: false, geminiConfigured: false, databaseEngine: "unknown" };
 let settingsSaveQueue = Promise.resolve();
 
 function loadState() {
@@ -164,7 +164,7 @@ function renderChat() {
   });
   $$("[data-copy]", messages).forEach((button) => button.addEventListener("click", () => copyText(chat.messages[Number(button.dataset.copy)].text)));
   $$("[data-read]", messages).forEach((button) => button.addEventListener("click", () => speakText(chat.messages[Number(button.dataset.read)].text)));
-  messages.scrollTop = messages.scrollHeight;
+  $(".chat-content").scrollTop = $(".chat-content").scrollHeight;
 }
 async function sendMessage(value) {
   const text = value.trim();
@@ -297,9 +297,11 @@ function showMemoryEditor(id = "") {
 }
 function renderVoice() {
   const page = $("#page-voice");
-  page.innerHTML = `<div class="page-container"><div class="page-header"><div><div class="eyebrow">SPEAK &amp; LISTEN</div><h1>Voice Studio</h1><p>Uses browser speech features when available.</p></div></div>
-    <div class="surface-card voice-card"><div class="mic-orb ${listening ? "listening" : ""}">◖</div><h2>${listening ? "Listening…" : "Ready when you are"}</h2><p class="voice-description">${listening ? "Speak now. Your words will appear in the chat composer." : "Start voice input or try speech output. Microphone permission is requested only when you start listening."}</p><button class="button ${listening ? "danger" : "primary"}" id="listenButton">${listening ? "■ Stop listening" : "◖ Start listening"}</button><div class="permission-line"><i class="dot"></i>Microphone permission is requested on use · Browser availability varies</div></div>
-    <div class="voice-settings"><div class="voice-setting"><label for="speechLanguage">Speech language</label><select id="speechLanguage"><option value="ml-IN" ${state.settings.language === "ml" ? "selected" : ""}>Malayalam</option><option value="en-US" ${state.settings.language !== "ml" ? "selected" : ""}>English</option></select></div><div class="voice-setting"><label>Speak replies automatically</label><button class="toggle ${state.settings.speakReplies ? "on" : ""}" id="speakToggle" role="switch" aria-checked="${state.settings.speakReplies}" aria-label="Speak replies automatically"></button></div><div class="voice-setting"><label for="voiceSpeed">Voice speed · <span id="speedValue">${Number($("#voiceSpeed")?.value || 1).toFixed(1)}×</span></label><input id="voiceSpeed" type="range" min=".7" max="1.3" step=".1" value="${$("#voiceSpeed")?.value || 1}"></div><div class="voice-setting"><label>Test speech output</label><button class="button secondary" id="testVoice">▶ Test voice</button></div></div></div>`;
+  const recognitionAvailable = Boolean(window.SpeechRecognition || window.webkitSpeechRecognition);
+  const speechAvailable = "speechSynthesis" in window;
+  page.innerHTML = `<div class="page-container"><div class="page-header"><div><div class="eyebrow">SPEAK &amp; LISTEN</div><h1>Voice Studio</h1><p>Voice input and output depend on browser support; microphone permission is requested only when listening starts.</p></div></div>
+    <div class="surface-card voice-card"><div class="mic-orb ${listening ? "listening" : ""}">◖</div><h2>${listening ? "Listening…" : "Ready when you are"}</h2><p class="voice-description">${listening ? "Speak now. Your words will appear in the chat composer." : "Speech recognition: " + (recognitionAvailable ? "available" : "not supported in this browser") + ". Speech output: " + (speechAvailable ? "available" : "not supported in this browser") + "."}</p><button class="button ${listening ? "danger" : "primary"}" id="listenButton" ${!recognitionAvailable && !listening ? "disabled" : ""}>${listening ? "■ Stop listening" : "◖ Start listening"}</button><div class="permission-line"><i class="dot"></i>Microphone permission is requested on use · Browser availability varies</div></div>
+    <div class="voice-settings"><div class="voice-setting"><label for="speechLanguage">Speech language</label><select id="speechLanguage"><option value="ml-IN" ${state.settings.language === "ml" ? "selected" : ""}>Malayalam</option><option value="en-US" ${state.settings.language !== "ml" ? "selected" : ""}>English</option></select></div><div class="voice-setting"><label for="speakToggle">Speak replies automatically</label><button class="toggle ${state.settings.speakReplies ? "on" : ""}" id="speakToggle" role="switch" aria-checked="${state.settings.speakReplies}" aria-label="Speak replies automatically"></button></div><div class="voice-setting"><label for="voiceSpeed">Voice speed · <span id="speedValue">${Number($("#voiceSpeed")?.value || 1).toFixed(1)}×</span></label><input id="voiceSpeed" type="range" min=".7" max="1.3" step=".1" value="${$("#voiceSpeed")?.value || 1}" ${speechAvailable ? "" : "disabled"}></div><div class="voice-setting"><label for="testVoice">Test speech output</label><button class="button secondary" id="testVoice" ${speechAvailable ? "" : "disabled"}>▶ ${speechAvailable ? "Test voice" : "Speech output unavailable"}</button></div></div></div>`;
   $("#listenButton").addEventListener("click", toggleListening);
   $("#speechLanguage").addEventListener("change", (event) => { state.settings.language = event.target.value === "ml-IN" ? "ml" : "en"; saveSettings(); });
   $("#speakToggle").addEventListener("click", () => { state.settings.speakReplies = !state.settings.speakReplies; saveSettings(); renderVoice(); });
@@ -325,11 +327,11 @@ function renderTasks() {
 function renderSettings() {
   $("#page-settings").innerHTML = `<div class="page-container"><div class="page-header"><div><div class="eyebrow">MAKE IT YOURS</div><h1>Settings</h1><p>Personalize your assistant. ${STATIC_ONLY ? "Preferences are stored on this device. A connected backend syncs assistant settings." : "Assistant preferences are stored in the backend. Microphone permissions stay in your browser."}</p></div></div>
     <section class="setting-group"><h2>Appearance</h2><div class="setting-row"><div class="setting-copy"><strong>Theme</strong><small>Light theme for a calm, readable workspace.</small></div><span class="inline-status">☼ Light</span></div></section>
-    <section class="setting-group"><h2>Language</h2><div class="setting-row"><div class="setting-copy"><strong>Interface language</strong><small>Preferred language for assistant previews.</small></div><select id="languageSetting"><option value="both">Malayalam + English</option><option value="ml">Malayalam</option><option value="en">English</option></select></div></section>
-    <section class="setting-group"><h2>AI &amp; Models</h2><div class="setting-row"><div class="setting-copy"><strong>Preferred AI mode</strong><small>Auto and Online use the configured Gemini backend.</small></div><select id="settingsMode"><option value="auto">Auto</option><option value="online">Online</option><option value="offline">Offline</option></select></div><div class="setting-row"><div class="setting-copy"><strong>Gemini service</strong><small>API credentials stay on the backend.</small></div><span class="inline-status"><i class="dot ${backendStatus.geminiConfigured ? "good" : ""}"></i> ${backendStatus.geminiConfigured ? "Configured" : STATIC_ONLY ? "Backend not connected" : "API key required"}</span></div></section>
+    <section class="setting-group"><h2>Language</h2><div class="setting-row"><div class="setting-copy"><strong>Assistant response language</strong><small>Choose Malayalam, English, or let Gemini match your message.</small></div><select id="languageSetting"><option value="both">Match message · English or Malayalam</option><option value="ml">Malayalam</option><option value="en">English</option></select></div></section>
+    <section class="setting-group"><h2>AI &amp; Models</h2><div class="setting-row"><div class="setting-copy"><strong>Preferred AI mode</strong><small>Auto and Online use Gemini through the configured backend.</small></div><select id="settingsMode"><option value="auto">Auto</option><option value="online">Online</option><option value="offline" disabled>Offline (not available)</option></select></div><div class="setting-row"><div class="setting-copy"><strong>Gemini service</strong><small>API credentials stay on the backend.</small></div><span class="inline-status"><i class="dot ${backendStatus.geminiConfigured ? "good" : ""}"></i> ${backendStatus.geminiConfigured ? "Configured" : STATIC_ONLY ? "Backend not connected" : backendStatus.available ? "API key required" : "Backend unavailable"}</span></div></section>
     <section class="setting-group"><h2>Voice</h2><div class="setting-row"><div class="setting-copy"><strong>Speak replies automatically</strong><small>Use browser speech output when available.</small></div><button class="toggle ${state.settings.speakReplies ? "on" : ""}" id="settingsSpeak" role="switch" aria-checked="${state.settings.speakReplies}" aria-label="Speak replies automatically"></button></div></section>
     <section class="setting-group"><h2>Memory &amp; Privacy</h2><div class="setting-row"><div class="setting-copy"><strong>Use saved memories</strong><small>When enabled, your saved memories may be included as context for Gemini.</small></div><button class="toggle ${state.settings.memoryEnabled ? "on" : ""}" id="settingsMemory" role="switch" aria-checked="${state.settings.memoryEnabled}" aria-label="Use saved memories"></button></div><div class="setting-row"><div class="setting-copy"><strong>Conversation history</strong><small>${STATIC_ONLY ? "Conversation history is unavailable until a backend is connected." : `${state.chats.length} ${state.chats.length === 1 ? "conversation" : "conversations"} saved in the backend database.`}</small></div><button class="button secondary" id="clearHistory" ${state.chats.length ? "" : "disabled"}>Clear history</button></div><div class="setting-row"><div class="setting-copy"><strong>Credentials</strong><small>API keys are held by the backend and never sent to this browser.</small></div><span class="inline-status">Backend only</span></div></section>
-    <section class="setting-group"><h2>About</h2><div class="setting-row"><div class="setting-copy"><strong>Personal AI UI</strong><small>Version 1 · Gemini + SQLite backend</small></div><span class="inline-status">${STATIC_ONLY ? "Static site" : "Connected app"}</span></div></section></div>`;
+    <section class="setting-group"><h2>About</h2><div class="setting-row"><div class="setting-copy"><strong>Personal AI</strong><small>Browser interface · ${backendStatus.available ? `${backendStatus.databaseEngine} backend` : STATIC_ONLY ? "GitHub Pages · backend required" : "Backend status unavailable"}</small></div><span class="inline-status">${STATIC_ONLY ? "Static site" : "Connected app"}</span></div></section></div>`;
   $("#languageSetting").value = state.settings.language; $("#settingsMode").value = state.settings.mode;
   $("#languageSetting").addEventListener("change", (event) => { state.settings.language = event.target.value; saveSettings(); });
   $("#settingsMode").addEventListener("change", (event) => { state.settings.mode = event.target.value; $("#modeSelect").value = event.target.value; updateMode(); saveSettings(); });
@@ -343,7 +345,17 @@ function renderSettings() {
     } catch (error) { console.error("Could not clear conversation history.", error); toast(error.message); }
   }));
 }
-function storageAvailable() { try { localStorage.setItem("__preview_test__", "1"); localStorage.removeItem("__preview_test__"); return true; } catch { return false; } }
+function storageAvailable() {
+  const key = `personal-ai-storage-check-${Math.random()}`;
+  try {
+    localStorage.setItem(key, "1");
+    localStorage.removeItem(key);
+    return true;
+  } catch {
+    localStorage.removeItem(key);
+    return false;
+  }
+}
 function renderHelp() {
   const backendText = backendStatus.available ? "Connected" : STATIC_ONLY ? "Not connected" : "Unavailable";
   const aiText = backendStatus.available
