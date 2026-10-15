@@ -63,6 +63,8 @@ Cloud Run and Cloud SQL may incur charges.
 ## Endpoints
 
 - `GET /api/health` — database and Gemini configuration status
+- `GET /api/settings` — load persisted assistant preferences
+- `PUT /api/settings` — update assistant preferences
 - `GET /api/chats` — list chats
 - `POST /api/chats` — create a chat; optional JSON `{"title":"..."}`
 - `GET /api/chats/{chat_id}` — chat and messages

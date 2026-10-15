@@ -154,6 +154,11 @@ def initialize_database() -> None:
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
             )""",
+            """CREATE TABLE IF NOT EXISTS assistant_settings (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                settings_json TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )""",
         )
         for statement in statements:
             connection.execute(statement)
@@ -352,6 +357,13 @@ class AssistantHandler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(body)
             return
+        if route == ["api", "settings"]:
+            defaults = {"language": "both", "mode": "auto", "speakReplies": False, "memoryEnabled": True}
+            with database() as connection:
+                row = connection.execute("SELECT settings_json FROM assistant_settings WHERE id = 1").fetchone()
+            settings = {**defaults, **(json.loads(row["settings_json"]) if row else {})}
+            self._json(200, {"settings": settings})
+            return
         if route == ["api", "health"]:
             with database() as connection:
                 connection.execute("SELECT 1").fetchone()
@@ -515,6 +527,27 @@ class AssistantHandler(BaseHTTPRequestHandler):
         raise APIError(404, "Endpoint not found.")
 
     def _put(self, route: list[str]) -> None:
+        if route == ["api", "settings"]:
+            body = self._body()
+            defaults = {"language": "both", "mode": "auto", "speakReplies": False, "memoryEnabled": True}
+            if set(body) - set(defaults):
+                raise APIError(400, "Only supported assistant settings may be updated.")
+            with database() as connection:
+                row = connection.execute("SELECT settings_json FROM assistant_settings WHERE id = 1").fetchone()
+                settings = {**defaults, **(json.loads(row["settings_json"]) if row else {}), **body}
+                if settings["language"] not in ("both", "en", "ml"):
+                    raise APIError(400, "language must be one of 'both', 'en', or 'ml'.")
+                if settings["mode"] not in ("auto", "online", "offline"):
+                    raise APIError(400, "mode must be one of 'auto', 'online', or 'offline'.")
+                if not isinstance(settings["speakReplies"], bool) or not isinstance(settings["memoryEnabled"], bool):
+                    raise APIError(400, "speakReplies and memoryEnabled must be booleans.")
+                connection.execute(
+                    "INSERT INTO assistant_settings (id, settings_json, updated_at) VALUES (1, ?, ?) "
+                    "ON CONFLICT (id) DO UPDATE SET settings_json = excluded.settings_json, updated_at = excluded.updated_at",
+                    (json.dumps(settings), timestamp()),
+                )
+            self._json(200, {"settings": settings})
+            return
         if len(route) != 3 or route[:2] != ["api", "memories"]:
             raise APIError(404, "Endpoint not found.")
         body = self._body()

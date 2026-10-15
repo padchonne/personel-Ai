@@ -140,6 +140,22 @@ class BackendAPITest(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertIn(b"/api/chats", body)
 
+    def test_settings_are_persisted_and_validated(self):
+        status, body = self.request("GET", "/api/settings")
+        self.assertEqual(status, 200)
+        self.assertEqual(body["settings"], {
+            "language": "both", "mode": "auto", "speakReplies": False, "memoryEnabled": True
+        })
+        status, body = self.request("PUT", "/api/settings", {
+            "language": "ml", "mode": "online", "speakReplies": True, "memoryEnabled": False
+        })
+        self.assertEqual(status, 200)
+        self.assertEqual(body["settings"]["language"], "ml")
+        self.assertEqual(self.request("GET", "/api/settings")[1]["settings"], body["settings"])
+        status, body = self.request("PUT", "/api/settings", {"mode": "unsupported"})
+        self.assertEqual(status, 400)
+        self.assertIn("mode", body["error"])
+
     def test_chat_lifecycle_persists_messages_and_deletes_cascade(self):
         status, created = self.request("POST", "/api/chats", {})
         self.assertEqual(status, 201)
