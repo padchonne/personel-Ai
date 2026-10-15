@@ -3,6 +3,10 @@
 A browser-based personal assistant with a Python backend, SQLite persistence,
 and optional Google Gemini chat replies.
 
+The assistant defaults to Malayalam responses and Malayalam follow-up
+questions. Change the response language to English or automatic language
+matching in Settings.
+
 ## Run locally
 
 From this project directory, optionally set a Gemini API key in your shell,
