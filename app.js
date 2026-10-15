@@ -2,6 +2,7 @@ const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 const STORAGE_KEY = "personal-ai-preview-v1";
 const API_BASE_URL = document.querySelector('meta[name="api-base-url"]')?.content || "";
+const STATIC_ONLY = location.hostname.endsWith(".github.io") && !API_BASE_URL;
 const initialState = { chats: [], memories: [], settings: { language: "both", mode: "auto", speakReplies: false, memoryEnabled: true }, activeChatId: null };
 let state = loadState();
 let activePage = "chat";
@@ -26,6 +27,7 @@ function saveState() {
   catch (error) { console.error("Could not save preview data.", error); toast("Could not save this change in browser storage."); }
 }
 async function apiRequest(path, options = {}) {
+  if (STATIC_ONLY) throw new Error("This GitHub Pages site has no backend connected. AI chat and saved data are unavailable.");
   let response;
   try {
     response = await fetch(`${API_BASE_URL}${path}`, {
@@ -56,6 +58,7 @@ function renderChats(filter = "") {
   $$(".recent-chat").forEach((button) => button.addEventListener("click", () => setActiveChat(button.dataset.chatId)));
 }
 async function newChat() {
+  if (STATIC_ONLY) return;
   try {
     const { chat } = await apiRequest("/api/chats", { method: "POST", body: JSON.stringify({}) });
     state.chats.unshift({ ...chat, updatedAt: Date.parse(chat.updatedAt), messages: [] });
@@ -103,6 +106,10 @@ function renderChat() {
 async function sendMessage(value) {
   const text = value.trim();
   if (!text) return;
+  if (STATIC_ONLY) {
+    toast("AI chat is unavailable until a backend is connected to this website.");
+    return;
+  }
   if (state.settings.mode === "offline") {
     toast("Offline mode is not configured. Choose Auto or Online to use Gemini.");
     return;
@@ -174,10 +181,10 @@ function renderMemory(filter = "") {
   const page = $("#page-memory");
   const memories = state.memories.filter((item) => item.text.toLowerCase().includes(filter.toLowerCase()));
   page.innerHTML = `<div class="page-container">
-    <div class="page-header"><div><div class="eyebrow">YOUR PERSONAL SPACE</div><h1>Memory</h1><p>Choose what your assistant should remember. Saved memories are stored in your backend.</p></div><button class="button primary" id="addMemory">＋ Add memory</button></div>
+    <div class="page-header"><div><div class="eyebrow">YOUR PERSONAL SPACE</div><h1>Memory</h1><p>${STATIC_ONLY ? "Connect a backend to save memories. Browser preferences remain on this device." : "Choose what your assistant should remember. Saved memories are stored in your backend."}</p></div><button class="button primary" id="addMemory" ${STATIC_ONLY ? "disabled" : ""}>＋ Add memory</button></div>
     <div class="surface-card"><h2>Memory permission</h2><p>Memory is ${state.settings.memoryEnabled ? "enabled" : "paused"}. Add only information you are comfortable storing in this browser.</p><div class="setting-row" style="margin-top:10px"><div class="setting-copy"><strong>Allow saved memories</strong><small>Pause to stop using memory in this preview.</small></div><button class="toggle ${state.settings.memoryEnabled ? "on" : ""}" id="memoryToggle" role="switch" aria-checked="${state.settings.memoryEnabled}" aria-label="Allow saved memories"></button></div></div>
-    <div class="memory-toolbar"><input class="search-field" id="memorySearch" value="${escapeHtml(filter)}" placeholder="⌕  Search saved memories…" aria-label="Search saved memories">${state.memories.length ? '<button class="button secondary" id="clearMemories">Clear all memories</button>' : ""}</div>
-    <div class="memory-list">${memories.length ? memories.map((item) => `<article class="memory-item"><div class="memory-item-icon">◇</div><div class="memory-item-content"><p>${escapeHtml(item.text)}</p><div class="memory-meta">Saved ${new Date(item.createdAt).toLocaleDateString()} · Added by you</div></div><div class="memory-actions"><button data-edit-memory="${escapeHtml(item.id)}">Edit</button><button data-delete-memory="${escapeHtml(item.id)}">Delete</button></div></article>`).join("") : `<div class="empty-state"><strong>${filter ? "No matching memories" : "No saved memories yet"}</strong>${filter ? "Try a different search." : "Add a memory to keep a helpful detail in this browser."}</div>`}</div><div id="memoryEditor"></div></div>`;
+    <div class="memory-toolbar"><input class="search-field" id="memorySearch" value="${escapeHtml(filter)}" placeholder="⌕  Search saved memories…" aria-label="Search saved memories">${state.memories.length ? `<button class="button secondary" id="clearMemories" ${STATIC_ONLY ? "disabled" : ""}>Clear all memories</button>` : ""}</div>
+    <div class="memory-list">${memories.length ? memories.map((item) => `<article class="memory-item"><div class="memory-item-icon">◇</div><div class="memory-item-content"><p>${escapeHtml(item.text)}</p><div class="memory-meta">Saved ${new Date(item.createdAt).toLocaleDateString()} · Added by you</div></div><div class="memory-actions"><button data-edit-memory="${escapeHtml(item.id)}">Edit</button><button data-delete-memory="${escapeHtml(item.id)}">Delete</button></div></article>`).join("") : `    <div class="empty-state"><strong>${filter ? "No matching memories" : "No saved memories yet"}</strong>${filter ? "Try a different search." : STATIC_ONLY ? "Saved memories will be available after a backend is connected." : "Add a memory to keep a helpful detail in this browser."}</div>`}</div><div id="memoryEditor"></div></div>`;
   $("#memoryCount").textContent = state.memories.length;
   $("#detailsMemory").textContent = state.memories.length ? `${state.memories.length} saved ${state.memories.length === 1 ? "memory" : "memories"}` : "No memories saved";
   $("#addMemory").addEventListener("click", () => showMemoryEditor());
@@ -189,16 +196,17 @@ function renderMemory(filter = "") {
       state.memories = []; renderMemory(); toast("All memories cleared.");
     } catch (error) { console.error("Could not clear memories.", error); toast(error.message); }
   }));
-  $$("[data-edit-memory]", page).forEach((button) => button.addEventListener("click", () => showMemoryEditor(button.dataset.editMemory)));
-  $$("[data-delete-memory]", page).forEach((button) => button.addEventListener("click", () => confirm("Delete this memory?", "This memory will be removed from saved memory.", "Delete", async () => {
+  $$("[data-edit-memory]", page).forEach((button) => { button.disabled = STATIC_ONLY; button.addEventListener("click", () => showMemoryEditor(button.dataset.editMemory)); });
+  $$("[data-delete-memory]", page).forEach((button) => { button.disabled = STATIC_ONLY; button.addEventListener("click", () => confirm("Delete this memory?", "This memory will be removed from saved memory.", "Delete", async () => {
     try {
       await apiRequest(`/api/memories/${encodeURIComponent(button.dataset.deleteMemory)}`, { method: "DELETE" });
       state.memories = state.memories.filter((item) => item.id !== button.dataset.deleteMemory);
       renderMemory(filter); toast("Memory deleted.");
     } catch (error) { console.error("Could not delete memory.", error); toast(error.message); }
-  })));
+  })); });
 }
 function showMemoryEditor(id = "") {
+  if (STATIC_ONLY) return;
   const memory = state.memories.find((item) => item.id === id);
   const editor = $("#memoryEditor");
   editor.innerHTML = `<form class="surface-card memory-form" id="memoryForm"><h2>${memory ? "Edit memory" : "Add a memory"}</h2><p>Stored only in this browser. Do not enter passwords, API keys, or other secrets.</p><textarea id="memoryText" maxlength="500" required placeholder="For example: I prefer explanations in Malayalam.">${escapeHtml(memory?.text || "")}</textarea><div class="form-actions"><button type="button" class="button secondary" id="cancelMemory">Cancel</button><button class="button primary" type="submit">Save memory</button></div></form>`;
@@ -255,10 +263,10 @@ function renderSettings() {
   $("#page-settings").innerHTML = `<div class="page-container"><div class="page-header"><div><div class="eyebrow">MAKE IT YOURS</div><h1>Settings</h1><p>Personalize your assistant. Preferences are stored in this browser.</p></div></div>
     <section class="setting-group"><h2>Appearance</h2><div class="setting-row"><div class="setting-copy"><strong>Theme</strong><small>Light theme for a calm, readable workspace.</small></div><span class="inline-status">☼ Light</span></div></section>
     <section class="setting-group"><h2>Language</h2><div class="setting-row"><div class="setting-copy"><strong>Interface language</strong><small>Preferred language for assistant previews.</small></div><select id="languageSetting"><option value="both">Malayalam + English</option><option value="ml">Malayalam</option><option value="en">English</option></select></div></section>
-    <section class="setting-group"><h2>AI &amp; Models</h2><div class="setting-row"><div class="setting-copy"><strong>Preferred AI mode</strong><small>Auto and Online use the configured Gemini backend.</small></div><select id="settingsMode"><option value="auto">Auto</option><option value="online">Online</option><option value="offline">Offline</option></select></div><div class="setting-row"><div class="setting-copy"><strong>Gemini service</strong><small>API credentials stay on the backend.</small></div><span class="inline-status"><i class="dot ${backendStatus.geminiConfigured ? "good" : ""}"></i> ${backendStatus.geminiConfigured ? "Configured" : "API key required"}</span></div></section>
+    <section class="setting-group"><h2>AI &amp; Models</h2><div class="setting-row"><div class="setting-copy"><strong>Preferred AI mode</strong><small>Auto and Online use the configured Gemini backend.</small></div><select id="settingsMode"><option value="auto">Auto</option><option value="online">Online</option><option value="offline">Offline</option></select></div><div class="setting-row"><div class="setting-copy"><strong>Gemini service</strong><small>API credentials stay on the backend.</small></div><span class="inline-status"><i class="dot ${backendStatus.geminiConfigured ? "good" : ""}"></i> ${backendStatus.geminiConfigured ? "Configured" : STATIC_ONLY ? "Backend not connected" : "API key required"}</span></div></section>
     <section class="setting-group"><h2>Voice</h2><div class="setting-row"><div class="setting-copy"><strong>Speak replies automatically</strong><small>Use browser speech output when available.</small></div><button class="toggle ${state.settings.speakReplies ? "on" : ""}" id="settingsSpeak" role="switch" aria-checked="${state.settings.speakReplies}" aria-label="Speak replies automatically"></button></div></section>
-    <section class="setting-group"><h2>Memory &amp; Privacy</h2><div class="setting-row"><div class="setting-copy"><strong>Use saved memories</strong><small>When enabled, your saved memories may be included as context for Gemini.</small></div><button class="toggle ${state.settings.memoryEnabled ? "on" : ""}" id="settingsMemory" role="switch" aria-checked="${state.settings.memoryEnabled}" aria-label="Use saved memories"></button></div><div class="setting-row"><div class="setting-copy"><strong>Conversation history</strong><small>${state.chats.length} ${state.chats.length === 1 ? "conversation" : "conversations"} saved in the backend database.</small></div><button class="button secondary" id="clearHistory" ${state.chats.length ? "" : "disabled"}>Clear history</button></div><div class="setting-row"><div class="setting-copy"><strong>Credentials</strong><small>API keys are held by the backend and never sent to this browser.</small></div><span class="inline-status">Backend only</span></div></section>
-    <section class="setting-group"><h2>About</h2><div class="setting-row"><div class="setting-copy"><strong>Personal AI UI</strong><small>Version 1 · Gemini + SQLite backend</small></div><span class="inline-status">Connected app</span></div></section></div>`;
+    <section class="setting-group"><h2>Memory &amp; Privacy</h2><div class="setting-row"><div class="setting-copy"><strong>Use saved memories</strong><small>When enabled, your saved memories may be included as context for Gemini.</small></div><button class="toggle ${state.settings.memoryEnabled ? "on" : ""}" id="settingsMemory" role="switch" aria-checked="${state.settings.memoryEnabled}" aria-label="Use saved memories"></button></div><div class="setting-row"><div class="setting-copy"><strong>Conversation history</strong><small>${STATIC_ONLY ? "Conversation history is unavailable until a backend is connected." : `${state.chats.length} ${state.chats.length === 1 ? "conversation" : "conversations"} saved in the backend database.`}</small></div><button class="button secondary" id="clearHistory" ${state.chats.length ? "" : "disabled"}>Clear history</button></div><div class="setting-row"><div class="setting-copy"><strong>Credentials</strong><small>API keys are held by the backend and never sent to this browser.</small></div><span class="inline-status">Backend only</span></div></section>
+    <section class="setting-group"><h2>About</h2><div class="setting-row"><div class="setting-copy"><strong>Personal AI UI</strong><small>Version 1 · Gemini + SQLite backend</small></div><span class="inline-status">${STATIC_ONLY ? "Static site" : "Connected app"}</span></div></section></div>`;
   $("#languageSetting").value = state.settings.language; $("#settingsMode").value = state.settings.mode;
   $("#languageSetting").addEventListener("change", (event) => { state.settings.language = event.target.value; saveState(); toast("Language preference saved."); });
   $("#settingsMode").addEventListener("change", (event) => { state.settings.mode = event.target.value; $("#modeSelect").value = event.target.value; updateMode(); saveState(); });
@@ -274,19 +282,23 @@ function renderSettings() {
 }
 function storageAvailable() { try { localStorage.setItem("__preview_test__", "1"); localStorage.removeItem("__preview_test__"); return true; } catch { return false; } }
 function renderHelp() {
-  const backendText = backendStatus.available ? "Connected" : "Unavailable";
+  const backendText = backendStatus.available ? "Connected" : STATIC_ONLY ? "Not connected" : "Unavailable";
   const aiText = backendStatus.available
     ? backendStatus.geminiConfigured ? "Gemini configured" : "Gemini key required"
-    : "Backend unavailable";
-  $("#page-help").innerHTML = `<div class="page-container"><div class="page-header"><div><div class="eyebrow">TRANSPARENCY FIRST</div><h1>Help &amp; System Status</h1><p>Backend status is checked from this browser.</p></div><button class="button secondary" id="refreshStatus">↻ Refresh status</button></div>
-    <div class="status-grid"><article class="status-card"><i class="status-icon">⌘</i><div><strong>Backend</strong><span><i class="dot ${backendStatus.available ? "good" : ""}"></i> ${backendText}</span></div></article><article class="status-card"><i class="status-icon">✦</i><div><strong>Online AI</strong><span><i class="dot ${backendStatus.geminiConfigured ? "good" : ""}"></i> ${aiText}</span></div></article><article class="status-card"><i class="status-icon">◈</i><div><strong>Local model</strong><span><i class="dot"></i> Not configured</span></div></article><article class="status-card"><i class="status-icon">◖</i><div><strong>Microphone</strong><span><i class="dot"></i> Permission checked on use</span></div></article><article class="status-card"><i class="status-icon">◇</i><div><strong>Memory storage</strong><span><i class="dot ${backendStatus.available ? "good" : ""}"></i> ${backendStatus.available ? "SQLite backend" : "Backend unavailable"}</span></div></article><article class="status-card"><i class="status-icon">◷</i><div><strong>Last checked</strong><span>${new Date().toLocaleTimeString()}</span></div></article></div>
-    <section class="surface-card troubleshoot"><h2>Getting started</h2><p>Chats and saved memories are stored in the backend's SQLite database. Gemini credentials stay on the backend.</p><ul><li>Set GEMINI_API_KEY in the backend environment to enable AI replies.</li><li>Unavailable AI modes are not silently substituted.</li><li>Browser speech features vary. If recognition is unavailable, type in Chat.</li><li>Computer Tasks is a safe preview and does not execute actions.</li></ul></section></div>`;
+    : STATIC_ONLY ? "Backend required" : "Backend unavailable";
+  $("#page-help").innerHTML = `<div class="page-container"><div class="page-header"><div><div class="eyebrow">TRANSPARENCY FIRST</div><h1>Help &amp; System Status</h1><p>${STATIC_ONLY ? "This GitHub Pages site hosts the interface only; it does not run the Python backend." : "Backend status is checked from this browser."}</p></div><button class="button secondary" id="refreshStatus">↻ Refresh status</button></div>
+    <div class="status-grid"><article class="status-card"><i class="status-icon">⌘</i><div><strong>Backend</strong><span><i class="dot ${backendStatus.available ? "good" : ""}"></i> ${backendText}</span></div></article><article class="status-card"><i class="status-icon">✦</i><div><strong>Online AI</strong><span><i class="dot ${backendStatus.geminiConfigured ? "good" : ""}"></i> ${aiText}</span></div></article><article class="status-card"><i class="status-icon">◈</i><div><strong>Local model</strong><span><i class="dot"></i> Not configured</span></div></article><article class="status-card"><i class="status-icon">◖</i><div><strong>Microphone</strong><span><i class="dot"></i> Permission checked on use</span></div></article><article class="status-card"><i class="status-icon">◇</i><div><strong>Memory storage</strong><span><i class="dot ${backendStatus.available ? "good" : ""}"></i> ${backendStatus.available ? "SQLite backend" : STATIC_ONLY ? "Backend required" : "Backend unavailable"}</span></div></article><article class="status-card"><i class="status-icon">◷</i><div><strong>Last checked</strong><span>${new Date().toLocaleTimeString()}</span></div></article></div>
+    <section class="surface-card troubleshoot"><h2>Getting started</h2><p>${STATIC_ONLY ? "To enable chat, AI, and saved conversations, deploy the Python backend separately, set GEMINI_API_KEY on that server, and configure this site to use its HTTPS API URL. Never put the key in this website." : "Chats and saved memories are stored in the backend's SQLite database. Gemini credentials stay on the backend."}</p><ul><li>Set GEMINI_API_KEY in the backend environment to enable AI replies.</li><li>Unavailable AI modes are not silently substituted.</li><li>Browser speech features vary. If recognition is unavailable, type in Chat.</li><li>Computer Tasks is a safe preview and does not execute actions.</li></ul></section></div>`;
   $("#refreshStatus").addEventListener("click", async () => {
     await checkBackend();
     renderHelp();
   });
 }
 async function checkBackend() {
+  if (STATIC_ONLY) {
+    backendStatus = { available: false, geminiConfigured: false };
+    return;
+  }
   try {
     const status = await apiRequest("/api/health");
     backendStatus = { available: true, geminiConfigured: status.geminiConfigured === true };
@@ -295,6 +307,7 @@ async function checkBackend() {
   }
 }
 async function loadBackendData() {
+  if (STATIC_ONLY) return;
   try {
     const [{ chats }, { memories }] = await Promise.all([
       apiRequest("/api/chats"),
@@ -315,11 +328,24 @@ function updateMode() {
   const labels = { auto: "Auto mode", online: "Online", offline: "Offline" };
   $("#modeAvailability").textContent = state.settings.mode === "offline"
     ? "Offline model unavailable"
-    : backendStatus.geminiConfigured ? "Gemini ready" : backendStatus.available ? "Gemini key required" : "Backend unavailable";
+    : backendStatus.geminiConfigured ? "Gemini ready" : backendStatus.available ? "Gemini key required" : STATIC_ONLY ? "Backend not connected" : "Backend unavailable";
   $("#detailsMode").textContent = labels[$("#modeSelect").value];
   $("#detailsService").textContent = backendStatus.geminiConfigured
     ? "Gemini configured"
-    : backendStatus.available ? "API key required" : "Backend unavailable";
+    : backendStatus.available ? "API key required" : STATIC_ONLY ? "Backend not connected" : "Backend unavailable";
+}
+function configureDeploymentUI() {
+  if (!STATIC_ONLY) return;
+  $("#backendLabel").textContent = "Static site";
+  $("#backendFootnote").innerHTML = '<span class="dot"></span> AI and saved chats need a backend';
+  $("#backendIndicator").setAttribute("aria-label", "Backend not connected");
+  $("#chatNotice").innerHTML = '<span class="dot"></span> This website is online; connect a backend to enable AI chat and saved conversations.';
+  $("#backendDetailTip").textContent = "GitHub Pages hosts this interface only. Chat and memory storage require a separate backend.";
+  $("#messageInput").disabled = true;
+  $("#messageInput").placeholder = "Connect a backend to start chatting";
+  $(".send-button").disabled = true;
+  $("#newChat").disabled = true;
+  $$(".suggestion").forEach((button) => { button.disabled = true; });
 }
 function confirm(title, message, label, action) {
   $("#dialogTitle").textContent = title; $("#dialogMessage").textContent = message; $("#dialogConfirm").textContent = label;
@@ -361,4 +387,5 @@ $("#confirmForm").addEventListener("submit", (event) => {
 });
 document.addEventListener("keydown", (event) => { if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") { event.preventDefault(); newChat(); } });
 renderChats(); renderChat(); updateMode();
+configureDeploymentUI();
 Promise.all([checkBackend(), loadBackendData()]).then(updateMode);

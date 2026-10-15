@@ -28,6 +28,18 @@ for configuration, API endpoints, and tests.
 python3 -m unittest backend.test_main
 ```
 
+## GitHub Pages
+
+The static interface is published at <https://padchonne.github.io/personel-Ai/>.
+GitHub Pages cannot run the Python backend, so the hosted page reports that the
+backend is not connected and disables chat until a backend URL is configured.
+
+To enable AI chat, deploy the backend separately with HTTPS and appropriate
+authentication/access controls, set `GEMINI_API_KEY` on that server, and allow
+the Pages origin with `ASSISTANT_ALLOWED_ORIGINS=https://padchonne.github.io`.
+Then set the `api-base-url` meta tag in `index.html` to the backend's base URL.
+Never put API keys in the site or browser code.
+
 ## Privacy and deployment
 
 Chats and memories are saved to a local SQLite database, which is excluded

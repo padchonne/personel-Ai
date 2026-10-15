@@ -43,10 +43,10 @@
         </nav>
         <div class="profile">
           <div class="avatar" aria-hidden="true">P</div>
-          <div><strong>Personal workspace</strong><small>Local backend</small></div>
-          <span class="dot" aria-label="Local backend"></span>
+          <div><strong>Personal workspace</strong><small id="backendLabel">Checking backend</small></div>
+          <span class="dot" id="backendIndicator" aria-label="Backend status"></span>
         </div>
-        <div class="footnote"><span class="dot"></span> Your chats are saved to the local backend</div>
+        <div class="footnote" id="backendFootnote"><span class="dot"></span> Checking where chats are saved</div>
       </div>
     </aside>
 
@@ -92,7 +92,7 @@
             </div>
           </section>
           <div class="messages" id="messages" aria-live="polite" aria-relevant="additions"></div>
-          <div class="chat-notice" id="chatNotice"><span class="dot"></span> Gemini assistant · Conversations are saved to your backend</div>
+          <div class="chat-notice" id="chatNotice"><span class="dot"></span> Checking AI and storage status</div>
         </div>
         <div class="composer-wrap">
           <form class="composer" id="composer">
@@ -126,7 +126,7 @@
       <div class="detail-card"><i class="detail-icon" aria-hidden="true">✳</i><div><b>Assistant mode</b><small><i class="dot"></i><span id="detailsMode">Auto mode</span></small></div></div>
       <div class="detail-section"><h3>AI service</h3><b id="detailsService">Checking status…</b><small>Gemini API credentials are kept on the backend.</small></div>
       <div class="detail-section"><h3>Saved memories</h3><b id="detailsMemory">Stored in this browser</b><small>Manage what your assistant remembers.</small><button class="text-link" type="button" data-page="memory">View memory →</button></div>
-      <div class="detail-tip">Conversations and memories are saved to the local SQLite backend.</div>
+      <div class="detail-tip" id="backendDetailTip">Conversations and memories are saved to the local SQLite backend.</div>
       <button class="icon-button" id="chatMore" type="button" aria-label="Conversation options">•••</button>
     </aside>
   </div>
