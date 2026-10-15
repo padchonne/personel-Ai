@@ -144,7 +144,7 @@ class BackendAPITest(unittest.TestCase):
         status, body = self.request("GET", "/api/settings")
         self.assertEqual(status, 200)
         self.assertEqual(body["settings"], {
-            "language": "both", "mode": "auto", "speakReplies": False, "memoryEnabled": True
+            "language": "ml", "mode": "auto", "speakReplies": False, "memoryEnabled": True
         })
         status, body = self.request("PUT", "/api/settings", {
             "language": "ml", "mode": "online", "speakReplies": True, "memoryEnabled": False
@@ -207,7 +207,7 @@ class BackendAPITest(unittest.TestCase):
             )
         self.assertEqual(status, 200)
         self.assertEqual(generate.call_args.args[1], [created_memory["memory"]["text"]])
-        self.assertEqual(generate.call_args.args[2], "both")
+        self.assertEqual(generate.call_args.args[2], "ml")
 
         with patch.object(main, "generate_reply", return_value="Okay.") as generate:
             self.request(

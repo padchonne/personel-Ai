@@ -179,7 +179,7 @@ def row_to_chat(row: Mapping[str, Any], message_count: int | None = None) -> dic
 def generate_reply(
     history: list[dict[str, str]],
     memories: list[str] | None = None,
-    language: str = "both",
+    language: str = "ml",
 ) -> str:
     if not GEMINI_API_KEY:
         raise APIError(503, "Gemini is not configured. Set GEMINI_API_KEY on the backend.")
@@ -193,9 +193,9 @@ def generate_reply(
     ]
     request_body: dict[str, Any] = {"contents": contents}
     instructions = {
-        "both": "Respond in English or Malayalam, naturally matching the user's language.",
-        "en": "Respond in English.",
-        "ml": "Respond in Malayalam.",
+        "both": "Respond in English or Malayalam, naturally matching the user's language. Ask any follow-up questions in the same language.",
+        "en": "Respond in English and ask any follow-up questions in English.",
+        "ml": "Respond in Malayalam and ask any follow-up questions in Malayalam. Use natural, clear Malayalam.",
     }
     system_parts = [instructions[language]]
     if memories:
@@ -358,7 +358,7 @@ class AssistantHandler(BaseHTTPRequestHandler):
             self.wfile.write(body)
             return
         if route == ["api", "settings"]:
-            defaults = {"language": "both", "mode": "auto", "speakReplies": False, "memoryEnabled": True}
+            defaults = {"language": "ml", "mode": "auto", "speakReplies": False, "memoryEnabled": True}
             with database() as connection:
                 row = connection.execute("SELECT settings_json FROM assistant_settings WHERE id = 1").fetchone()
             settings = {**defaults, **(json.loads(row["settings_json"]) if row else {})}
@@ -448,7 +448,7 @@ class AssistantHandler(BaseHTTPRequestHandler):
             text = body.get("text")
             if not isinstance(text, str) or not text.strip() or len(text) > MAX_MESSAGE_CHARS:
                 raise APIError(400, f"text must be a non-empty string of at most {MAX_MESSAGE_CHARS} characters.")
-            language = body.get("language", "both")
+            language = body.get("language", "ml")
             if language not in ("both", "en", "ml"):
                 raise APIError(400, "language must be one of 'both', 'en', or 'ml'.")
             memory_enabled = body.get("memoryEnabled", True)
@@ -529,7 +529,7 @@ class AssistantHandler(BaseHTTPRequestHandler):
     def _put(self, route: list[str]) -> None:
         if route == ["api", "settings"]:
             body = self._body()
-            defaults = {"language": "both", "mode": "auto", "speakReplies": False, "memoryEnabled": True}
+            defaults = {"language": "ml", "mode": "auto", "speakReplies": False, "memoryEnabled": True}
             if set(body) - set(defaults):
                 raise APIError(400, "Only supported assistant settings may be updated.")
             with database() as connection:
