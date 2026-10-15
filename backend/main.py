@@ -6,9 +6,11 @@ import json
 import mimetypes
 import os
 import sqlite3
+import hmac
 import uuid
+from collections.abc import Mapping
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
@@ -16,10 +18,18 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import quote, unquote, urlsplit
 from urllib.request import Request, urlopen
 
+try:
+    import psycopg
+    from psycopg.rows import dict_row
+except ImportError:
+    psycopg = None
+    dict_row = None
+
 
 DATABASE_PATH = Path(
     os.environ.get("ASSISTANT_DATABASE_PATH", Path(__file__).with_name("assistant.sqlite3"))
 )
+DATABASE_URL = os.environ.get("DATABASE_URL", "")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-flash-latest")
 PORT = int(os.environ.get("PORT", "8000"))
@@ -40,7 +50,9 @@ DEFAULT_ALLOWED_ORIGINS = {
     "http://127.0.0.1:5500",
     "http://127.0.0.1:8000",
     "http://127.0.0.1:8080",
+    "https://padchonne.github.io",
 }
+DATABASE_ERRORS = (sqlite3.Error,) + ((psycopg.Error,) if psycopg else ())
 
 
 class APIError(Exception):
@@ -51,10 +63,52 @@ class APIError(Exception):
 
 
 def timestamp() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+    return datetime.now(timezone.utc).isoformat(timespec="microseconds").replace("+00:00", "Z")
 
 
-def connect_db() -> sqlite3.Connection:
+def following_timestamp(value: str) -> str:
+    current = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    return (current + timedelta(microseconds=1)).isoformat(timespec="microseconds").replace(
+        "+00:00", "Z"
+    )
+
+
+def postgres_configured() -> bool:
+    return bool(DATABASE_URL or os.environ.get("PGHOST"))
+
+
+class PostgresConnection:
+    def __init__(self, connection: Any) -> None:
+        self.connection = connection
+
+    def execute(self, sql: str, parameters: tuple[Any, ...] = ()) -> Any:
+        return self.connection.execute(sql.replace("?", "%s"), parameters)
+
+    def commit(self) -> None:
+        self.connection.commit()
+
+    def rollback(self) -> None:
+        self.connection.rollback()
+
+    def close(self) -> None:
+        self.connection.close()
+
+
+def connect_db() -> Any:
+    if postgres_configured():
+        if psycopg is None:
+            raise RuntimeError("PostgreSQL support requires the psycopg dependency.")
+        if DATABASE_URL:
+            connection = psycopg.connect(DATABASE_URL, row_factory=dict_row)
+        else:
+            connection = psycopg.connect(
+                host=os.environ["PGHOST"],
+                dbname=os.environ["PGDATABASE"],
+                user=os.environ["PGUSER"],
+                password=os.environ["PGPASSWORD"],
+                row_factory=dict_row,
+            )
+        return PostgresConnection(connection)
     DATABASE_PATH.parent.mkdir(parents=True, exist_ok=True)
     connection = sqlite3.connect(DATABASE_PATH, timeout=10)
     connection.row_factory = sqlite3.Row
@@ -77,33 +131,35 @@ def database() -> Any:
 
 def initialize_database() -> None:
     with database() as connection:
-        connection.executescript(
-            """
-            CREATE TABLE IF NOT EXISTS chats (
+        if not postgres_configured():
+            connection.execute("PRAGMA foreign_keys = ON")
+        statements = (
+            """CREATE TABLE IF NOT EXISTS chats (
                 id TEXT PRIMARY KEY,
                 title TEXT NOT NULL,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
-            );
-            CREATE TABLE IF NOT EXISTS messages (
+            )""",
+            """CREATE TABLE IF NOT EXISTS messages (
                 id TEXT PRIMARY KEY,
                 chat_id TEXT NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
                 role TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
                 text TEXT NOT NULL,
                 created_at TEXT NOT NULL
-            );
-            CREATE INDEX IF NOT EXISTS messages_chat_id ON messages(chat_id);
-            CREATE TABLE IF NOT EXISTS memories (
+            )""",
+            "CREATE INDEX IF NOT EXISTS messages_chat_id ON messages(chat_id)",
+            """CREATE TABLE IF NOT EXISTS memories (
                 id TEXT PRIMARY KEY,
                 text TEXT NOT NULL,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
-            );
-            """
+            )""",
         )
+        for statement in statements:
+            connection.execute(statement)
 
 
-def row_to_chat(row: sqlite3.Row, message_count: int | None = None) -> dict[str, Any]:
+def row_to_chat(row: Mapping[str, Any], message_count: int | None = None) -> dict[str, Any]:
     result: dict[str, Any] = {
         "id": row["id"],
         "title": row["title"],
@@ -205,7 +261,7 @@ class AssistantHandler(BaseHTTPRequestHandler):
             self.send_header("Access-Control-Allow-Origin", origin)
             self.send_header("Vary", "Origin")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.send_header("Access-Control-Allow-Headers", "Authorization, Content-Type")
         super().end_headers()
 
     def log_message(self, format: str, *args: Any) -> None:
@@ -242,12 +298,28 @@ class AssistantHandler(BaseHTTPRequestHandler):
 
     def _run(self, action: Any) -> None:
         try:
+            self._authorize_api_request()
             action()
         except APIError as error:
             self._json(error.status, {"error": error.message})
-        except sqlite3.Error:
+        except DATABASE_ERRORS:
             self.log_error("Database operation failed")
             self._json(500, {"error": "A database operation failed."})
+
+    def _authorize_api_request(self) -> None:
+        if not urlsplit(self.path).path.startswith("/api/"):
+            return
+        expected_token = os.environ.get("ASSISTANT_ACCESS_TOKEN", "")
+        if not expected_token:
+            if os.environ.get("K_SERVICE"):
+                raise APIError(503, "Backend access is not configured.")
+            return
+        authorization = self.headers.get("Authorization", "")
+        scheme, _, supplied_token = authorization.partition(" ")
+        if scheme.lower() != "bearer" or not hmac.compare_digest(
+            supplied_token, expected_token
+        ):
+            raise APIError(401, "Access code required.")
 
     def do_OPTIONS(self) -> None:
         self.send_response(204)
@@ -285,7 +357,12 @@ class AssistantHandler(BaseHTTPRequestHandler):
                 connection.execute("SELECT 1").fetchone()
             self._json(
                 200,
-                {"status": "ok", "database": "connected", "geminiConfigured": bool(GEMINI_API_KEY)},
+                {
+                    "status": "ok",
+                    "database": "connected",
+                    "databaseEngine": "PostgreSQL" if postgres_configured() else "SQLite",
+                    "geminiConfigured": bool(GEMINI_API_KEY),
+                },
             )
             return
         if route == ["api", "chats"]:
@@ -305,7 +382,7 @@ class AssistantHandler(BaseHTTPRequestHandler):
                 if chat is None:
                     raise APIError(404, "Chat not found.")
                 messages = connection.execute(
-                    "SELECT role, text, created_at FROM messages WHERE chat_id = ? ORDER BY rowid",
+                    "SELECT role, text, created_at FROM messages WHERE chat_id = ? ORDER BY created_at, id",
                     (route[2],),
                 ).fetchall()
             self._json(
@@ -372,11 +449,13 @@ class AssistantHandler(BaseHTTPRequestHandler):
                 if chat is None:
                     raise APIError(404, "Chat not found.")
                 history_rows = connection.execute(
-                    "SELECT role, text FROM messages WHERE chat_id = ? ORDER BY rowid DESC LIMIT ?",
+                    "SELECT role, text FROM messages WHERE chat_id = ? ORDER BY created_at DESC, id DESC LIMIT ?",
                     (chat_id, MAX_CONTEXT_MESSAGES - 1),
                 ).fetchall()
                 memory_rows = (
-                    connection.execute("SELECT text FROM memories ORDER BY created_at DESC").fetchall()
+                    connection.execute(
+                        "SELECT text FROM memories ORDER BY created_at DESC LIMIT 20"
+                    ).fetchall()
                     if memory_enabled
                     else []
                 )
@@ -390,6 +469,7 @@ class AssistantHandler(BaseHTTPRequestHandler):
             title = chat["title"]
             if title == "New conversation":
                 title = text[:34] + ("…" if len(text) > 34 else "")
+            assistant_created_at = following_timestamp(now)
             with database() as connection:
                 connection.execute(
                     "INSERT INTO messages (id, chat_id, role, text, created_at) VALUES (?, ?, ?, ?, ?)",
@@ -397,11 +477,11 @@ class AssistantHandler(BaseHTTPRequestHandler):
                 )
                 connection.execute(
                     "INSERT INTO messages (id, chat_id, role, text, created_at) VALUES (?, ?, ?, ?, ?)",
-                    (str(uuid.uuid4()), chat_id, "assistant", reply, now),
+                    (str(uuid.uuid4()), chat_id, "assistant", reply, assistant_created_at),
                 )
                 connection.execute(
                     "UPDATE chats SET title = ?, updated_at = ? WHERE id = ?",
-                    (title, now, chat_id),
+                    (title, assistant_created_at, chat_id),
                 )
             self._json(
                 200,
@@ -410,7 +490,7 @@ class AssistantHandler(BaseHTTPRequestHandler):
                     "title": title,
                     "messages": [
                         {"role": "user", "text": text, "createdAt": now},
-                        {"role": "assistant", "text": reply, "createdAt": now},
+                        {"role": "assistant", "text": reply, "createdAt": assistant_created_at},
                     ],
                 },
             )
@@ -491,6 +571,10 @@ class AssistantHandler(BaseHTTPRequestHandler):
 
 
 def main() -> None:
+    if os.environ.get("K_SERVICE") and not os.environ.get("ASSISTANT_ACCESS_TOKEN"):
+        raise RuntimeError("ASSISTANT_ACCESS_TOKEN must be configured before public deployment.")
+    if os.environ.get("K_SERVICE") and not (DATABASE_URL or os.environ.get("PGHOST")):
+        raise RuntimeError("A managed PostgreSQL database must be configured for Cloud Run.")
     initialize_database()
     server = ThreadingHTTPServer((HOST, PORT), AssistantHandler)
     print(f"Assistant API listening on port {PORT}")

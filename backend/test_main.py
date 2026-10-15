@@ -3,6 +3,8 @@ import json
 import tempfile
 import threading
 import unittest
+from types import SimpleNamespace
+from unittest.mock import Mock
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 from unittest.mock import patch
@@ -34,13 +36,15 @@ class BackendAPITest(unittest.TestCase):
         self.database_patch.stop()
         self.temp_dir.cleanup()
 
-    def request(self, method, path, body=None):
+    def request(self, method, path, body=None, headers=None):
         data = None if body is None else json.dumps(body).encode("utf-8")
+        request_headers = {"Content-Type": "application/json"} if data is not None else {}
+        request_headers.update(headers or {})
         request = Request(
             self.base_url + path,
             data=data,
             method=method,
-            headers={"Content-Type": "application/json"} if data is not None else {},
+            headers=request_headers,
         )
         try:
             response = urlopen(request, timeout=3)
@@ -59,7 +63,74 @@ class BackendAPITest(unittest.TestCase):
     def test_health_reports_database_and_missing_gemini_configuration(self):
         status, body = self.request("GET", "/api/health")
         self.assertEqual(status, 200)
-        self.assertEqual(body, {"status": "ok", "database": "connected", "geminiConfigured": False})
+        self.assertEqual(
+            body,
+            {
+                "status": "ok",
+                "database": "connected",
+                "databaseEngine": "SQLite",
+                "geminiConfigured": False,
+            },
+        )
+
+    def test_api_rejects_missing_or_invalid_access_code_when_configured(self):
+        with patch.dict("os.environ", {"ASSISTANT_ACCESS_TOKEN": "private-code"}):
+            self.assertEqual(self.request("GET", "/api/health")[0], 401)
+            self.assertEqual(
+                self.request(
+                    "GET",
+                    "/api/health",
+                    headers={"Authorization": "Bearer wrong-code"},
+                )[0],
+                401,
+            )
+            status, body = self.request(
+                "GET",
+                "/api/health",
+                headers={"Authorization": "Bearer private-code"},
+            )
+        self.assertEqual(status, 200)
+        self.assertEqual(body["database"], "connected")
+
+    def test_cors_allows_github_pages_origin_and_authorization_header(self):
+        request = Request(
+            self.base_url + "/api/health",
+            headers={"Origin": "https://padchonne.github.io"},
+        )
+        with urlopen(request, timeout=3) as response:
+            self.assertEqual(response.headers["Access-Control-Allow-Origin"], "https://padchonne.github.io")
+            self.assertIn("Authorization", response.headers["Access-Control-Allow-Headers"])
+
+    def test_postgres_connection_translates_placeholders(self):
+        raw_connection = Mock()
+        connection = main.PostgresConnection(raw_connection)
+        connection.execute("SELECT * FROM chats WHERE id = ?", ("chat-id",))
+        raw_connection.execute.assert_called_once_with(
+            "SELECT * FROM chats WHERE id = %s", ("chat-id",)
+        )
+
+    def test_postgres_host_configuration_initializes_without_sqlite_pragmas(self):
+        raw_connection = Mock()
+        postgres = SimpleNamespace(connect=Mock(return_value=raw_connection))
+        with (
+            patch.object(main, "psycopg", postgres),
+            patch.object(main, "dict_row", object()),
+            patch.dict(
+                "os.environ",
+                {
+                    "PGHOST": "/cloudsql/example",
+                    "PGDATABASE": "personal_ai",
+                    "PGUSER": "assistant",
+                    "PGPASSWORD": "test-password",
+                },
+            ),
+        ):
+            main.initialize_database()
+
+        executed_sql = [call.args[0] for call in raw_connection.execute.call_args_list]
+        self.assertTrue(executed_sql)
+        self.assertFalse(any(statement.startswith("PRAGMA") for statement in executed_sql))
+        raw_connection.commit.assert_called_once()
 
     def test_server_serves_the_app_from_project_root(self):
         status, body = self.request("GET", "/")
@@ -85,6 +156,10 @@ class BackendAPITest(unittest.TestCase):
         status, detail = self.request("GET", f"/api/chats/{chat_id}")
         self.assertEqual(status, 200)
         self.assertEqual([item["text"] for item in detail["messages"]], ["Hello", "Hello from Gemini."])
+        self.assertLess(
+            detail["messages"][0]["createdAt"],
+            detail["messages"][1]["createdAt"],
+        )
 
         status, chats = self.request("GET", "/api/chats")
         self.assertEqual(status, 200)
