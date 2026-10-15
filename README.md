@@ -3,9 +3,9 @@
 A browser-based personal assistant with a Python backend, SQLite persistence,
 and optional Google Gemini chat replies.
 
-The assistant defaults to Malayalam responses and Malayalam follow-up
-questions. Change the response language to English or automatic language
-matching in Settings.
+The assistant defaults to a friendly, two-way Malayalam conversation and asks
+relevant follow-up questions when they fit. Change the response language to
+English or automatic language matching in Settings.
 
 ## Run locally
 
